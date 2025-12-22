@@ -4,8 +4,6 @@ import math
 import os
 
 pygame.init()
-# LOAD AUDIO
-
 pygame.mixer.init()
 def try_load_sound(fname):
     if os.path.exists(fname):
@@ -61,7 +59,7 @@ RINTANGAN = 9     # Batu/Tembok (Tidak bisa dibangun)
 # Status Utama Game
 MENU_STATE = 0
 GAME_STATE = 1
-
+ABOUT_STATE = 2
 # --- DATA LEVEL ---
 LEVEL_MAPS = [
     {
@@ -100,15 +98,16 @@ class GameState:
     def __init__(self): 
         self.state = MENU_STATE  # Status Awal: MENU
         self.current_level_idx = 0
+        self.show_about = False
+        self.about_close_rect = None
+
 
         # Inventory Pilihan
         self.selected_piece = LURUS_HOR
-
         # Status game
         self.train_running = False
         self.game_over = False
         self.win = False
-
         # Sel terakhir yang diklik (buat rotasi dengan tombol R)
         self.last_clicked = None  # (gx, gy)
 
@@ -121,10 +120,8 @@ class GameState:
             level_idx = 0
 
         data = LEVEL_MAPS[level_idx]
-
         # grid menyimpan (type, rot)
         self.grid = [[(KOSONG, 0) for _ in range(KOLOM)] for _ in range(BARIS)]
-
         # Rintangan
         for (bx, by) in data['obs']:
             self.grid[by][bx] = (RINTANGAN, 0)
@@ -318,7 +315,6 @@ def draw_ui():
     font_btn = pygame.font.Font(None, 24)
     text_surf = font_btn.render(txt, True, PUTIH)
     screen.blit(text_surf, (LEBAR_LAYAR - 200, TINGGI_LAYAR - 70))
-    
     if state.selected_piece == SIKU:
         font_hint = pygame.font.Font(None, 22)
         hint_text = "Tekan R pada keyboard untuk mengubah arah rel"
@@ -329,6 +325,47 @@ def draw_ui():
             text_surf,
             (50, TINGGI_LAYAR - 130)
         )
+
+def draw_about_popup():
+    overlay = pygame.Surface((LEBAR_LAYAR, TINGGI_LAYAR), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 150))
+    screen.blit(overlay, (0, 0))
+
+    box_rect = pygame.Rect(150, 120, 500, 350)
+    pygame.draw.rect(screen, PUTIH, box_rect, border_radius=20)
+    pygame.draw.rect(screen, HITAM, box_rect, 3, border_radius=20)
+
+    font_title = pygame.font.Font(None, 48)
+    font_text = pygame.font.Font(None, 28)
+
+    screen.blit(font_title.render("ABOUT US", True, HITAM),
+                (box_rect.x + 170, box_rect.y + 20))
+
+    lines = [
+        "Kelompok 10",
+        "",
+        "Anggota:",
+        '''- Aldian Dimas Ferdiansyah   25031554224''',
+        '''- Jeremy Sion Anaru          25031554207''',
+        '''- Renaldo Agatha Sugiono   25031554211''',
+        "",
+    ]
+
+    y = box_rect.y + 90
+    for line in lines:
+        screen.blit(font_text.render(line, True, HITAM),
+                    (box_rect.x + 40, y))
+        y += 35
+
+    # Tombol tutup
+    close_rect = pygame.Rect(box_rect.x + 180, box_rect.y + 290, 140, 40)
+    state.about_close_rect = close_rect
+    pygame.draw.rect(screen, MERAH, close_rect, border_radius=10)
+    screen.blit(font_text.render("TUTUP", True, PUTIH),
+                (close_rect.x + 35, close_rect.y + 8))
+
+    return close_rect
+
 # FUNGSI UNTUK TOMBOL
 def draw_button_3d(surface, rect, text, base_color, hover_color, action_func=None):
     mx, my = pygame.mouse.get_pos()
@@ -378,7 +415,13 @@ def draw_menu():
     exit_rect_coord  = (LEBAR_LAYAR // 2 - 120, TINGGI_LAYAR // 2 + 120, 240, 70)
     draw_button_3d(screen, start_rect_coord, "MULAI", (46, 139, 87), (60, 179, 113))
     draw_button_3d(screen, exit_rect_coord, "KELUAR", (178, 34, 34), (205, 92, 92))
-    return start_rect_coord, exit_rect_coord
+
+    about_rect_coord = (LEBAR_LAYAR // 2 - 120, TINGGI_LAYAR // 2 + 220, 240, 70)
+    draw_button_3d(screen, about_rect_coord, "ABOUT US",
+               (70, 130, 180), (100, 160, 210))
+
+    return start_rect_coord, exit_rect_coord, about_rect_coord
+
 
 def update_logic():
     if not state.train_running or state.game_over or state.win:
@@ -488,17 +531,28 @@ while running:
         if state.state == MENU_STATE:
             if event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = pygame.mouse.get_pos()
-                start_rect = (LEBAR_LAYAR // 2 - 150, TINGGI_LAYAR // 2, 300, 70)
-                exit_rect = (LEBAR_LAYAR // 2 - 150, TINGGI_LAYAR // 2 + 100, 300, 70)
+                if state.show_about and state.about_close_rect:
+                    if state.about_close_rect.collidepoint(mx, my):
+                        state.show_about = False
+                    state.about_close_rect = None
+                else:
+                    # klik di luar popup → abaikan
+                    start_rect = (LEBAR_LAYAR // 2 - 150, TINGGI_LAYAR // 2, 300, 70)
+                    exit_rect = (LEBAR_LAYAR // 2 - 150, TINGGI_LAYAR // 2 + 100, 300, 70)
+                    about_rect = (LEBAR_LAYAR // 2 - 150, TINGGI_LAYAR // 2 + 200, 300, 70)
 
-                if start_rect[0] < mx < start_rect[0] + start_rect[2] and \
-                   start_rect[1] < my < start_rect[1] + start_rect[3]:
-                    state.state = GAME_STATE
-                    state.load_level(0)
+                    if start_rect[0] < mx < start_rect[0] + start_rect[2] and \
+                       start_rect[1] < my < start_rect[1] + start_rect[3]:
+                        state.state = GAME_STATE
+                        state.load_level(0)
 
-                elif exit_rect[0] < mx < exit_rect[0] + exit_rect[2] and \
-                     exit_rect[1] < my < exit_rect[1] + exit_rect[3]:
-                    running = False
+                    elif exit_rect[0] < mx < exit_rect[0] + exit_rect[2] and \
+                         exit_rect[1] < my < exit_rect[1] + exit_rect[3]:
+                        running = False
+
+                    elif about_rect[0] < mx < about_rect[0] + about_rect[2] and \
+                         about_rect[1] < my < about_rect[1] + about_rect[3]:
+                        state.show_about = True
 
         elif state.state == GAME_STATE:
             # Tombol R -> rotasi 90°
@@ -552,7 +606,10 @@ while running:
 
     # --- LOGIKA GAMBAR ---
     if state.state == MENU_STATE:
-        draw_menu()
+        start_rect, exit_rect, about_rect = draw_menu()
+    if state.show_about:
+        close_btn = draw_about_popup()
+
 
     elif state.state == GAME_STATE:
         screen.fill((135, 206, 235))
